@@ -1,0 +1,11 @@
+version: meddeid.import-mapping.v1
+text_column: note_body
+id_column: export_key
+include_metadata: true
+patient_given_name_column: subject_first_name
+patient_family_name_column: subject_family_name
+caregivers:
+  - given_name_column: primary_author_first_name
+    family_name_column: primary_author_family_name
+  - given_name_column: coauthor_first_name
+    family_name_column: coauthor_family_name
