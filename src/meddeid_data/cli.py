@@ -198,7 +198,7 @@ def _write_dataset_manifest(rows: list[dict], path: Path, *, role: str) -> None:
         role=role,
         artifact_path=path,
         records=rows,
-        producer={"name": "meddeid-data", "version": "0.2.0"},
+        producer={"name": "meddeid-data", "version": "0.2.1"},
         contracts={"language_profile": "nl-BE", "language_profile_version": "1"},
     )
     manifest["language_profile"] = profile.manifest()

@@ -11,7 +11,7 @@ Lookup sources and attribution are distributed with the language package.
 Belgian DEDUCE is not a runtime dependency.
 
 Start with the suite guide to
-[preparing and annotating data](https://meddeid.github.io/workflows/prepare-and-annotate/).
+[preparing and annotating data](https://stighellemans.github.io/meddeid.github.io/workflows/prepare-and-annotate/).
 This repository remains authoritative for import, project, split, generation,
 and validation commands.
 
