@@ -1,0 +1,15 @@
+{"name":"numeric_slash_long","slots":["all"],"example":"05/01/2026","post_process_rule":"numeric_slash_dash_date"}
+{"name":"numeric_slash_short","slots":["date"],"example":"5/1/26","post_process_rule":"numeric_slash_dash_date"}
+{"name":"numeric_dash_long","slots":["all"],"example":"05-01-2026","post_process_rule":"numeric_slash_dash_date"}
+{"name":"numeric_dash_short","slots":["date"],"example":"5-1-26","post_process_rule":"numeric_slash_dash_date"}
+{"name":"numeric_dot_long","slots":["all"],"example":"5.1.2026","post_process_rule":"numeric_dot_date"}
+{"name":"textual_full","slots":["all"],"example":"5 januari 2026","post_process_rule":"textual_dmy_date"}
+{"name":"textual_abbr_dot","slots":["all"],"example":"5 jan. 2026","post_process_rule":"textual_dmy_date"}
+{"name":"textual_hyphen","slots":["all"],"example":"5-jan-2026","post_process_rule":"textual_dmy_hyphen_date"}
+{"name":"weekday_numeric","slots":["date"],"example":"maandag 5/1/2026","post_process_rule":"weekday_numeric_date"}
+{"name":"weekday_textual","slots":["date"],"example":"ma 5 januari 2026","post_process_rule":"weekday_textual_dmy_date"}
+{"name":"day_month_numeric","slots":["date"],"example":"5/1","post_process_rule":"numeric_day_month"}
+{"name":"day_month_textual","slots":["date"],"example":"5 januari","post_process_rule":"textual_day_month"}
+{"name":"month_year","slots":["date"],"example":"januari 2026","post_process_rule":"textual_month_year"}
+{"name":"year_only","slots":["date"],"example":"2026","post_process_rule":"year_only"}
+{"name":"birth_degree_numeric","slots":["birthdate"],"example":"° 05/01/1986","annotation_example":"05/01/1986","prefix":"°","post_process_rule":"degree_prefixed_birthdate"}

@@ -9,4 +9,5 @@ build/
 dist/
 data/
 *.jsonl
+!src/meddeid_data/resources/clinical/*.jsonl
 *.parquet
