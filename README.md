@@ -224,7 +224,7 @@ the project's split manifest to recover the train and validation subsets:
 ```bash
 meddeid-data project prepare-training my-project \
   --development assignments/development-reviewer-a.jsonl \
-  --test-gold subannotation/evaluation-bundle/meddeid-dutch-synthetic-benchmark.jsonl
+  --test-gold subannotation/evaluation-bundle/benchmark.jsonl
 ```
 
 For workflows that reviewed the two development subsets separately, the
