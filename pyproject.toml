@@ -21,10 +21,15 @@ classifiers = [
 dependencies = [
     "meddeid-core>=0.1,<0.2",
     "meddeid-language-nl>=0.1,<0.2",
+    "PyYAML>=6",
     "python-dotenv>=1.0.1",
 ]
 
 [project.urls]
+Homepage = "https://meddeid.github.io/"
+Documentation = "https://meddeid.github.io/workflows/prepare-and-annotate/"
+Source = "https://github.com/stighellemans/meddeid-data"
+Issues = "https://github.com/stighellemans/meddeid-data/issues"
 "MedDeID on Hugging Face" = "https://huggingface.co/collections/stighellemans/meddeid"
 
 [project.optional-dependencies]
