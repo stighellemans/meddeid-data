@@ -17,11 +17,16 @@ and validation commands.
 
 ## Installation
 
+`meddeid-data` is not on PyPI yet. Install the current public source release:
+
 ```bash
-pip install meddeid-data
+git clone https://github.com/stighellemans/meddeid-data.git
+cd meddeid-data
+python -m pip install .
 ```
 
-Install Parquet support with `pip install 'meddeid-data[parquet]'`.
+Install Parquet support with `python -m pip install '.[parquet]'` from the same
+checkout.
 
 ## Generate synthetic data
 
