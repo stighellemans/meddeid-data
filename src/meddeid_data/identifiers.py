@@ -10,6 +10,8 @@ from __future__ import annotations
 import random
 from datetime import date
 
+from .email_domains import email_address
+
 
 def patient_number(rng: random.Random) -> str:
     return rng.choice(
@@ -55,9 +57,9 @@ def internal_phone(rng: random.Random) -> str:
     )
 
 
-def email(name: str, rng: random.Random) -> str:
+def email(name: str, rng: random.Random, *, profile_id: str = "nl-BE") -> str:
     base = ".".join(part.lower().replace("'", "") for part in name.split()[:2])
-    return f"{base}{rng.randrange(10, 99)}@example.be"
+    return email_address(profile_id, f"{base}{rng.randrange(10, 99)}")
 
 
 def caregiver_id(rng: random.Random) -> str:

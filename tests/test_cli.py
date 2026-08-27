@@ -36,6 +36,31 @@ def test_project_create_imports_and_prints_preannotation_handoff(tmp_path, capsy
     assert row["metadata"]["patient"]["given_name"] == "Jan"
 
 
+def test_english_project_does_not_recommend_dutch_preannotation(tmp_path, capsys):
+    source = tmp_path / "notes.csv"
+    source.write_text('note_id,text\nn-1,"English clinical note"\n', encoding="utf-8")
+    project = tmp_path / "english-project"
+
+    assert main(
+        [
+            "project",
+            "create",
+            str(project),
+            str(source),
+            "--namespace",
+            "english-study",
+            "--language-profile",
+            "en-GB",
+        ]
+    ) == 0
+
+    output = capsys.readouterr().out
+    assert "No released local pre-annotation model is configured for en-GB" in output
+    assert "meddeid-dutch-synth" not in output
+    row = json.loads((project / "artifacts" / "annotations.jsonl").read_text())
+    assert row["metadata"]["lang"] == "en-GB"
+
+
 def test_project_create_accepts_common_name_column_mappings(tmp_path):
     source = tmp_path / "notes.csv"
     source.write_text(

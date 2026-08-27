@@ -812,7 +812,7 @@ def import_documents(
         role="input_documents",
         artifact_path=artifact_path,
         records=rows,
-        producer={"name": "meddeid-data", "version": "0.2.1"},
+        producer={"name": "meddeid-data", "version": "0.3.0"},
         contracts={"language_profile": project["language_profile"]},
     )
     manifest["source"] = {

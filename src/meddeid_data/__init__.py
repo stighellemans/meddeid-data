@@ -1,5 +1,8 @@
-"""Synthetic Belgian clinical de-identification dataset tooling."""
+"""Profile-driven clinical de-identification dataset tooling."""
 
-__all__ = ["__version__"]
+from .production import ProductionPlan
+from .production_backends import ProductionBackend
 
-__version__ = "0.2.1"
+__all__ = ["ProductionBackend", "ProductionPlan", "__version__"]
+
+__version__ = "0.3.0"

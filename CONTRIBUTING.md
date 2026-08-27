@@ -23,3 +23,13 @@ a public issue.
 The suite-wide architecture, data contract, privacy boundary, and compatibility
 matrix are documented at
 <https://stighellemans.github.io/meddeid.github.io/>.
+
+## Generation profiles
+
+Keep language- and locale-specific synthetic behavior behind the
+`GenerationProfile` contract. A new provider must include deterministic direct
+and two-stage generation, a locale-specific reviewer, hashed and attributed
+resources, exact-offset tests, all-renderer coverage, and profile provenance in
+case and dataset manifests. Do not treat translated templates alone as a new
+locale: identifiers, names, addresses, contacts, date/age forms, clinical style,
+and annotation boundary policy all require explicit review.

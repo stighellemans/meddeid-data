@@ -6,16 +6,14 @@ import shlex
 import sys
 from pathlib import Path
 
-from meddeid_core import build_artifact_manifest, validate_record
-from meddeid_language_nl import get_profile
+from meddeid_core import build_artifact_manifest, normalize_record, validate_record
 
-from .clinical_cases import generate_case_records
-from .generator import (
-    generate_documents,
-    render_documents_from_case_records,
-    write_jsonl,
+from .generation_profiles import (
+    GenerationProfile,
+    profile_from_case_records,
+    resolve_generation_profile,
+    write_review_report,
 )
-from .judge import judge_documents, write_report
 from .projects import (
     import_documents,
     init_project,
@@ -141,23 +139,49 @@ def _run_import(args: argparse.Namespace) -> tuple[Path, dict]:
     )
 
 
-def _print_annotation_next_steps(directory: Path, artifact: Path) -> None:
+def _print_annotation_next_steps(
+    directory: Path, artifact: Path, *, language_profile: str
+) -> None:
     assignment = directory.expanduser().resolve() / "assignments" / "primary.jsonl"
     artifact_arg = shlex.quote(str(artifact))
     assignment_arg = shlex.quote(str(assignment))
-    print("\nNext: create an annotation assignment initialized by the local model:")
+    default_models = {
+        "nl": "stighellemans/meddeid-dutch-synth",
+        "nl-be": "stighellemans/meddeid-dutch-synth",
+    }
+    model = default_models.get(language_profile.strip().replace("_", "-").lower())
+    if model:
+        print("\nNext: create an annotation assignment initialized by the local model:")
+        print(
+            f"  meddeid batch {artifact_arg} --output {assignment_arg} "
+            f"--model {model} --device cpu"
+        )
+        annotation_path = assignment_arg
+        print("\nThen annotate that current state:")
+    else:
+        print(
+            f"\nNo released local pre-annotation model is configured for "
+            f"{language_profile}. Start with empty spans and annotate the imported artifact:"
+        )
+        annotation_path = artifact_arg
     print(
-        f"  meddeid batch {artifact_arg} --output {assignment_arg} "
-        "--model stighellemans/meddeid-dutch-synth --device cpu"
-    )
-    print("\nThen annotate that current state:")
-    print(
-        f"  MEDDEID_ANNOTATIONS_PATH={assignment_arg} "
+        f"  MEDDEID_ANNOTATIONS_PATH={annotation_path} "
         "npm --prefix /path/to/meddeid-annotate run dev"
     )
 
 
+def _add_generation_profile_options(
+    parser: argparse.ArgumentParser, *, default_profile: str | None = "nl-BE"
+) -> None:
+    parser.add_argument(
+        "--language-profile",
+        default=default_profile,
+        help="generation locale profile (built-ins: nl-BE, nl-NL, en-GB, en-US)",
+    )
+
+
 def _add_generation_options(parser: argparse.ArgumentParser) -> None:
+    _add_generation_profile_options(parser)
     parser.add_argument("--count", type=int, default=5)
     parser.add_argument("--seed", type=int, default=20260508)
     parser.add_argument("--output", type=Path, required=True)
@@ -192,16 +216,42 @@ def _write_jsonl_raw(rows: list[dict], path: Path) -> None:
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
-def _write_dataset_manifest(rows: list[dict], path: Path, *, role: str) -> None:
-    profile = get_profile("nl-BE", version="1")
+def _write_jsonl(rows: list[dict], path: Path) -> None:
+    for row in rows:
+        profile = str(row.get("metadata", {}).get("generation_profile", ""))
+        if profile in {"en-GB", "en-US"} and any(
+            span.get("label") == "Anonymize_Other"
+            for span in row.get("spans", ())
+            if isinstance(span, dict)
+        ):
+            raise ValueError(
+                f"{profile} synthetic export must not contain Anonymize_Other"
+            )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(normalize_record(row), ensure_ascii=False) + "\n")
+
+
+def _write_dataset_manifest(
+    rows: list[dict],
+    path: Path,
+    *,
+    role: str,
+    profile: GenerationProfile,
+) -> None:
     manifest = build_artifact_manifest(
         role=role,
         artifact_path=path,
         records=rows,
-        producer={"name": "meddeid-data", "version": "0.2.1"},
-        contracts={"language_profile": "nl-BE", "language_profile_version": "1"},
+        producer={"name": "meddeid-data", "version": "0.3.0"},
+        contracts={
+            "language_profile": profile.profile_id,
+            "generation_profile": "meddeid.generation-profile.v1",
+        },
     )
-    manifest["language_profile"] = profile.manifest()
+    manifest["language_profile"] = profile.language_manifest()
+    manifest["generation_profile"] = profile.manifest()
     _write_pretty(manifest, path.with_suffix(path.suffix + ".manifest.json"))
 
 
@@ -210,7 +260,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     generate = sub.add_parser(
-        "generate", help="generate synthetic Belgian clinical notes"
+        "generate", help="generate synthetic clinical notes with a locale profile"
     )
     _add_generation_options(generate)
 
@@ -227,6 +277,7 @@ def main(argv: list[str] | None = None) -> int:
 
     render = sub.add_parser("render-cases", help="render structured case JSONL")
     render.add_argument("input", type=Path)
+    _add_generation_profile_options(render, default_profile=None)
     render.add_argument("--output", type=Path, required=True)
     render.add_argument("--pretty-output", type=Path)
     render.add_argument("--judge-report", type=Path)
@@ -236,6 +287,12 @@ def main(argv: list[str] | None = None) -> int:
         "validate", help="validate canonical JSONL offsets and labels"
     )
     validate.add_argument("path", type=Path)
+
+    production = sub.add_parser(
+        "production",
+        help="run resumable, batch-gated synthetic corpus production",
+    )
+    production.add_argument("production_args", nargs=argparse.REMAINDER)
 
     project = sub.add_parser("project", help="create/import/split a canonical hospital project")
     project_sub = project.add_subparsers(dest="project_command", required=True)
@@ -293,6 +350,11 @@ def main(argv: list[str] | None = None) -> int:
     project_training.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
 
+    if args.command == "production":
+        from .production_cli import main as production_main
+
+        return production_main(args.production_args)
+
     if args.command == "project":
         if args.project_command == "create":
             init_project(
@@ -315,7 +377,11 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 f"Reusable import mapping: {import_mapping}"
             )
-            _print_annotation_next_steps(args.directory, artifact)
+            _print_annotation_next_steps(
+                args.directory,
+                artifact,
+                language_profile=manifest["contracts"]["language_profile"],
+            )
             return 0
         if args.project_command == "init":
             init_project(
@@ -336,7 +402,11 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 f"Reusable import mapping: {import_mapping}"
             )
-            _print_annotation_next_steps(args.directory, artifact)
+            _print_annotation_next_steps(
+                args.directory,
+                artifact,
+                language_profile=manifest["contracts"]["language_profile"],
+            )
             return 0
         if args.project_command == "package-annotation":
             manifest_path, manifest = package_annotation_set(
@@ -393,7 +463,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command in {"generate", "sample"}:
-        docs = generate_documents(
+        profile = resolve_generation_profile(args.language_profile)
+        docs = profile.generate_documents(
             args.count,
             seed=args.seed,
             synthea_csv_dir=args.synthea_csv_dir,
@@ -403,15 +474,18 @@ def main(argv: list[str] | None = None) -> int:
             force_synthea=args.force_synthea,
             require_synthea=args.require_synthea,
         )
-        docs, results, model_reviews = judge_documents(docs)
-        write_jsonl(docs, args.output)
-        _write_dataset_manifest(docs, args.output, role="synthetic_corpus")
+        docs, results, model_reviews = profile.review_documents(docs)
+        _write_jsonl(docs, args.output)
+        _write_dataset_manifest(
+            docs, args.output, role="synthetic_corpus", profile=profile
+        )
         _write_pretty(docs, args.pretty_output)
         if args.judge_report:
-            write_report(results, model_reviews, args.judge_report)
+            write_review_report(results, model_reviews, args.judge_report)
         return 1 if any(not result.passed for result in results) else 0
 
     if args.command == "build-cases":
+        profile = resolve_generation_profile(args.language_profile)
         synthea_seeds, _ = load_or_generate_synthea_csv_seeds(
             args.synthea_csv_dir,
             limit=args.count,
@@ -422,7 +496,7 @@ def main(argv: list[str] | None = None) -> int:
             force=args.force_synthea,
             require=args.require_synthea,
         )
-        rows = generate_case_records(
+        rows = profile.build_case_records(
             args.count,
             seed=args.seed,
             synthea_seeds=synthea_seeds,
@@ -433,15 +507,20 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "render-cases":
-        docs = render_documents_from_case_records(
-            _read_jsonl(args.input), seed=args.seed
+        records = _read_jsonl(args.input)
+        profile = profile_from_case_records(
+            records,
+            requested_profile_id=args.language_profile,
         )
-        docs, results, model_reviews = judge_documents(docs)
-        write_jsonl(docs, args.output)
-        _write_dataset_manifest(docs, args.output, role="synthetic_corpus")
+        docs = profile.render_case_records(records, seed=args.seed)
+        docs, results, model_reviews = profile.review_documents(docs)
+        _write_jsonl(docs, args.output)
+        _write_dataset_manifest(
+            docs, args.output, role="synthetic_corpus", profile=profile
+        )
         _write_pretty(docs, args.pretty_output)
         if args.judge_report:
-            write_report(results, model_reviews, args.judge_report)
+            write_review_report(results, model_reviews, args.judge_report)
         return 1 if any(not result.passed for result in results) else 0
 
     errors = 0

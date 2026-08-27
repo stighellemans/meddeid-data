@@ -1,13 +1,20 @@
 # meddeid-data
 
-Generate synthetic Belgian clinical notes with exact character-offset
-de-identification annotations. The package includes the structured case model,
-deterministic Dutch renderers, clinical resource pools, Synthea integration and
-dataset-quality checks.
+Generate synthetic clinical notes with exact character-offset de-identification
+annotations. The package includes locale generation profiles, structured case
+models, deterministic renderers, clinical resource pools, Synthea integration,
+and dataset-quality checks.
 
-Belgian names, addresses, hospitals and healthcare institutions are sampled
-from the versioned `nl-BE` resources distributed by `meddeid-language-nl`.
-Lookup sources and attribution are distributed with the language package.
+The `nl-BE` profile samples Belgian resources from `meddeid-language-nl`.
+The `nl-NL` profile shares only the locale-neutral clinical case structure. It
+has a dedicated Netherlands renderer and judge, Netherlands-specific names,
+addresses and institutions, and BSN, BIG, EPD/ZIS, postcode, +31 phone, and
+`example.nl` conventions. It is available as generation code; this migration
+does not generate or publish a corpus.
+The unversioned `en-GB` and `en-US` locale profiles sample independently released, audited
+name, address, institution, occupation, and terminology records from
+`meddeid-language-en`. Bare `en` is rejected because date order, addresses,
+identifiers, phone ranges, and clinical terminology are locale-specific.
 Belgian DEDUCE is not a runtime dependency.
 
 Start with the suite guide to
@@ -26,7 +33,7 @@ Install Parquet support with
 
 ## Generate synthetic data
 
-Generate an offline dataset using the built-in clinical catalog:
+Generation defaults to the released Dutch/Belgian profile:
 
 ```bash
 meddeid-data generate --count 100 --output synthetic.jsonl \
@@ -34,6 +41,33 @@ meddeid-data generate --count 100 --output synthetic.jsonl \
   --judge-report synthetic-report.md
 meddeid-data validate synthetic.jsonl
 ```
+
+Select a language and locale explicitly for multilingual generation:
+
+```bash
+meddeid-data generate --language-profile en-GB \
+  --count 100 --output synthetic.en-gb.jsonl \
+  --judge-report synthetic.en-gb-report.md
+```
+
+Use `--language-profile en-US` for the separate United States and territories
+profile. English synthetic generation permits exactly the 14 token-classifier
+labels and rejects `Anonymize_Other` during rendering, review, and export. The
+full taxonomy remains valid for non-generation interoperability.
+
+The local `nl-NL` profile can be selected in the same way. Its availability
+does not imply that a Netherlands corpus exists or that the released Dutch
+model has been trained or evaluated on Netherlands clinical text.
+
+The ordered English synthetic allowlist is exactly
+`Address_Location:Caregiver`, `Address_Location:Other`,
+`Address_Location:Patient`, `Age_Birthdate`, `Contactdetails`, `Date`,
+`ID:Caregiver`, `ID:Patient`, `Name:Caregiver`, `Name:Other`, `Name:Patient`,
+`Organization:Healthcare`, `Organization:Other`, and `Profession`.
+
+Every dataset manifest pins both `language_profile` and the complete
+`meddeid.generation-profile.v1` descriptor, including resource hashes. Unknown
+profiles fail before generation with the installed-provider discovery result.
 
 Use existing Synthea CSV output or ask the tool to create it:
 
@@ -48,12 +82,105 @@ meddeid-data generate --count 1000 --output synthetic.jsonl \
 The two-stage workflow keeps structured cases available for inspection:
 
 ```bash
-meddeid-data build-cases --count 100 --output cases.jsonl
+meddeid-data build-cases --language-profile en-GB \
+  --count 100 --output cases.jsonl
 meddeid-data render-cases cases.jsonl --output synthetic.jsonl
 ```
 
-`meddeid-data sample` provides a small offline generation run using the same
-generator and Belgian lookup collection.
+Case records pin their generation profile, so `render-cases` resolves it without
+requiring the selection again. Passing an incompatible profile is rejected.
+`meddeid-data sample` provides a small offline generation run through the same
+profile contract.
+
+### Batch-gated production corpora
+
+Use the production state machine for paid generation or any corpus that needs
+personal review and a sealed benchmark. Unlike `generate`, it records every
+batch transition and refuses to finalize unsigned or changed documents:
+
+```bash
+meddeid-data production init ./english-production \
+  --profile en-GB,en-US \
+  --count 7000 --batch-size 500 --benchmark-count 300 \
+  --mode remote --allow-remote --backend english-luna \
+  --author-model gpt-5.6-luna --reasoning-effort low \
+  --max-cost-usd 32.68
+
+meddeid-data production status ./english-production
+meddeid-data production run ./english-production --until-gate
+```
+
+`run --until-gate` stops before personal review. Record one content-bound
+decision for every document, then sign off that batch:
+
+```bash
+meddeid-data production review ./english-production \
+  --batch-index 0 --document-id en-gb-synthetic-00001 \
+  --decision accept --reviewer reviewer-id
+meddeid-data production sign-off ./english-production \
+  --batch-index 0 --reviewer reviewer-id --notes 'All 500 reviewed'
+```
+
+Decisions are `accept`, `edit`, `regenerate`, or `reject`. Changing a document
+invalidates its decision and the batch sign-off. The corpus-wide writer lock
+prevents a second batch from spending concurrently. The attempt ledger counts
+failed and superseded API requests. `--max-cost-usd` stops new work when the
+recorded spend reaches the guardrail and, after the first attempts exist,
+before a batch whose projected completion would cross it. The provider account
+ledger remains authoritative, so leave headroom for requests already in flight.
+
+Use `replace` for a manually corrected canonical document; the old version and
+both hashes remain in the audit trail. Use `invalidate` when the document must
+be independently re-authored on the next `run`:
+
+```bash
+meddeid-data production replace ./english-production \
+  --batch-index 0 --document corrected-document.json \
+  --editor reviewer-id --reason 'Corrected two PII boundaries'
+meddeid-data production invalidate ./english-production \
+  --batch-index 0 --document-id en-gb-synthetic-00001 \
+  --reason 'Regenerate with a less common address format'
+```
+
+Both operations invalidate the old automated report, document review, batch
+sign-off, and any derived final split. After every batch is accepted:
+
+```bash
+meddeid-data production finalize ./english-production
+```
+
+Finalization repeats canonical-label and diversity checks, refuses exact,
+PII-normalized, or configured near duplicates, and creates deterministic
+profile/document-family-stratified development and benchmark files. The
+English 7,000-document preset resolves to 6,700 development documents and a
+300-document benchmark with 150 documents per locale and 25 per
+locale/document-family cell.
+
+Remote authoring is a plugin boundary (`meddeid.production_backends`). The
+built-in `english-luna` backend implements the current English pipeline;
+another language can provide a backend without adding locale branches to the
+production state machine.
+
+### Add another language or locale
+
+Generation profiles keep locale-specific case construction, rendering, review,
+resources, and provenance outside the CLI. A provider returns a
+`meddeid_data.generation_profiles.GenerationProfile` and registers it through
+the `meddeid.generation_profiles` entry-point group:
+
+```toml
+[project.entry-points."meddeid.generation_profiles"]
+fr = "example_meddeid_language_fr.generation:get_generation_profile"
+```
+
+The provider function receives `profile_id` and keyword-only `version`. It
+returns a profile when supported and raises `ValueError` otherwise. A profile
+must implement direct generation, two-stage case building/rendering,
+deterministic review, and a hashed resource manifest scoped to the same profile
+ID and version. Tests should verify deterministic output, all document types,
+exact Unicode-code-point offsets, language metadata, profile inference from case
+records, resource hashes, and CLI manifest provenance. The built-in `en-GB`
+and `en-US` profiles are the executable conformance examples.
 
 ## Create an annotation-ready dataset
 
@@ -196,6 +323,10 @@ npm --prefix /path/to/meddeid-annotate run dev
 The model spans in `primary.jsonl` are not a separate suggestion type. They are
 the current spans in an assignment whose documents are still unreviewed. The
 reviewer edits, deletes, and adds spans using the normal annotation controls.
+
+For a profile without a released inference model, the CLI does not recommend
+the Dutch model. It instead prints the command for starting primary annotation
+directly from the imported empty-span artifact.
 
 Model downloading happens during `meddeid batch`, not data import. After the
 bundle is downloaded, inference is local and document text is not sent to a
