@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shlex
+import shutil
 import sys
 from pathlib import Path
 
@@ -15,14 +17,104 @@ from .generation_profiles import (
     write_review_report,
 )
 from .projects import (
+    ColumnMappingError,
     import_documents,
     init_project,
     load_import_mapping,
     package_annotation_set,
+    resume_empty_project,
     split_project,
 )
 from .synthea_adapter import load_or_generate_synthea_csv_seeds
 from .training_views import prepare_training_views
+
+
+def _display_path(path: Path) -> str:
+    """Prefer a copyable path relative to the current working directory."""
+
+    resolved = path.expanduser().resolve()
+    try:
+        return str(resolved.relative_to(Path.cwd().resolve()))
+    except ValueError:
+        return str(resolved)
+
+
+def _is_annotation_checkout(path: Path) -> bool:
+    package_path = path / "package.json"
+    if not package_path.is_file():
+        return False
+    try:
+        package = json.loads(package_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return package.get("name") == "meddeid-annotate"
+
+
+def _find_annotation_checkout() -> Path | None:
+    configured = os.environ.get("MEDDEID_ANNOTATE_DIR")
+    if configured:
+        candidate = Path(configured).expanduser().resolve()
+        if _is_annotation_checkout(candidate):
+            return candidate
+    current = Path.cwd().resolve()
+    for parent in (current, *current.parents):
+        candidate = parent / "repos" / "meddeid-annotate"
+        if _is_annotation_checkout(candidate):
+            return candidate
+    return None
+
+
+def _docker_bind_argument(path: Path, container_path: str) -> str:
+    resolved = path.expanduser().resolve()
+    try:
+        relative = resolved.relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        return shlex.quote(f"{resolved}:{container_path}")
+    escaped = (
+        relative.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("$", "\\$")
+        .replace("`", "\\`")
+    )
+    return f'"$PWD/{escaped}:{container_path}"'
+
+
+def _print_annotation_app_next_step(annotation_path: Path) -> None:
+    checkout = _find_annotation_checkout()
+    annotation_arg = shlex.quote(_display_path(annotation_path))
+    if checkout is not None:
+        checkout_arg = shlex.quote(_display_path(checkout))
+        print("\nA local meddeid-annotate checkout was detected.")
+        if shutil.which("npm") is None:
+            print("Node.js 20+ with npm is required to run this source checkout.")
+        if not (checkout / "node_modules").is_dir():
+            print("Install its locked application dependencies once:")
+            print(f"  npm ci --prefix {checkout_arg}")
+        print("Start the review application:")
+        print(
+            f"  MEDDEID_ANNOTATIONS_PATH={annotation_arg} "
+            f"npm --prefix {checkout_arg} run dev"
+        )
+        print("Then open the local URL printed by the application.")
+        return
+
+    image = "ghcr.io/stighellemans/meddeid-annotate:0.2.0"
+    container_path = f"/input/{annotation_path.name}"
+    if shutil.which("docker") is None:
+        print(
+            "\nmeddeid-annotate is a separate application, not a pip package. "
+            "Docker was not found on PATH; install Docker Desktop or Docker "
+            "Engine first."
+        )
+    else:
+        print("\nNo source checkout is needed for the review application.")
+    print("Start the public image (it is downloaded automatically on first use):")
+    print("  docker run --rm -p 127.0.0.1:8787:8787 \\")
+    print("    --read-only --cap-drop ALL --security-opt no-new-privileges \\")
+    print(f"    -e MEDDEID_ANNOTATIONS_PATH={container_path} \\")
+    print(f"    -v {_docker_bind_argument(annotation_path, container_path)} \\")
+    print(f"    {image}")
+    print("Then open http://127.0.0.1:8787.")
 
 
 def _add_import_options(parser: argparse.ArgumentParser) -> None:
@@ -139,35 +231,75 @@ def _run_import(args: argparse.Namespace) -> tuple[Path, dict]:
     )
 
 
+def _import_retry_command(
+    args: argparse.Namespace, *, replacements: dict[str, str] | None = None
+) -> str:
+    """Render the equivalent import-only command after create initialized a project."""
+
+    replacements = replacements or {}
+    parts = [
+        "meddeid-data",
+        "project",
+        "import",
+        str(args.directory),
+        str(args.source),
+    ]
+    scalar_options = (
+        ("mapping_config", "--mapping-config"),
+        ("text_column", "--text-column"),
+        ("id_column", "--id-column"),
+        ("metadata_json_column", "--metadata-json-column"),
+        ("patient_name_column", "--patient-name-column"),
+        ("patient_given_name_column", "--patient-given-name-column"),
+        ("patient_family_name_column", "--patient-family-name-column"),
+        ("caregiver_delimiter", "--caregiver-delimiter"),
+    )
+    for attribute, option in scalar_options:
+        value = replacements.get(attribute, getattr(args, attribute))
+        if value is not None:
+            parts.extend((option, str(value)))
+    for value in args.metadata_columns or []:
+        parts.extend(("--metadata-column", value))
+    for value in args.caregiver_columns or []:
+        parts.extend(("--caregiver-column", value))
+    if args.no_metadata:
+        parts.append("--no-metadata")
+    return shlex.join(parts)
+
+
 def _print_annotation_next_steps(
     directory: Path, artifact: Path, *, language_profile: str
 ) -> None:
-    assignment = directory.expanduser().resolve() / "assignments" / "primary.jsonl"
-    artifact_arg = shlex.quote(str(artifact))
-    assignment_arg = shlex.quote(str(assignment))
+    assignment = (
+        directory.expanduser().resolve()
+        / "assignments"
+        / "model-assisted-review.jsonl"
+    )
+    artifact_arg = shlex.quote(_display_path(artifact))
+    assignment_arg = shlex.quote(_display_path(assignment))
     default_models = {
         "nl": "stighellemans/meddeid-dutch-synth",
         "nl-be": "stighellemans/meddeid-dutch-synth",
     }
     model = default_models.get(language_profile.strip().replace("_", "-").lower())
     if model:
-        print("\nNext: create an annotation assignment initialized by the local model:")
+        if shutil.which("meddeid") is None:
+            print("\nModel-assisted review requires the MedDeID inference package:")
+            print("  python -m pip install 'meddeid>=0.3,<0.4'")
+        print("\nNext: create a model-assisted review assignment:")
         print(
             f"  meddeid batch {artifact_arg} --output {assignment_arg} "
             f"--model {model} --device cpu"
         )
-        annotation_path = assignment_arg
-        print("\nThen annotate that current state:")
+        annotation_path = assignment
     else:
         print(
             f"\nNo released local pre-annotation model is configured for "
             f"{language_profile}. Start with empty spans and annotate the imported artifact:"
         )
-        annotation_path = artifact_arg
-    print(
-        f"  MEDDEID_ANNOTATIONS_PATH={annotation_path} "
-        "npm --prefix /path/to/meddeid-annotate run dev"
-    )
+        annotation_path = artifact
+    print("\nThen review and correct that assignment:")
+    _print_annotation_app_next_step(annotation_path)
 
 
 def _add_generation_profile_options(
@@ -244,7 +376,7 @@ def _write_dataset_manifest(
         role=role,
         artifact_path=path,
         records=rows,
-        producer={"name": "meddeid-data", "version": "0.3.0"},
+        producer={"name": "meddeid-data", "version": "0.4.0"},
         contracts={
             "language_profile": profile.profile_id,
             "generation_profile": "meddeid.generation-profile.v1",
@@ -357,26 +489,77 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "project":
         if args.project_command == "create":
-            init_project(
-                args.directory,
-                namespace=args.namespace,
-                language_profile=args.language_profile,
-            )
-            artifact, manifest = _run_import(args)
+            resumed = False
+            try:
+                init_project(
+                    args.directory,
+                    namespace=args.namespace,
+                    language_profile=args.language_profile,
+                )
+            except ValueError as exc:
+                try:
+                    root, _ = resume_empty_project(
+                        args.directory,
+                        namespace=args.namespace,
+                        language_profile=args.language_profile,
+                    )
+                except ValueError as resume_error:
+                    parser.error(str(resume_error))
+                except FileNotFoundError:
+                    parser.error(
+                        f"{exc}. Choose an empty project directory; no files "
+                        "were changed."
+                    )
+                print(
+                    f"Continuing existing empty MedDeID project at "
+                    f"{_display_path(root)}; "
+                    "the private document-ID key is unchanged."
+                )
+                resumed = True
+            try:
+                artifact, manifest = _run_import(args)
+            except (FileNotFoundError, RuntimeError, ValueError) as exc:
+                print(f"Dataset import failed: {exc}", file=sys.stderr)
+                replacements = {}
+                if isinstance(exc, ColumnMappingError) and exc.suggestion:
+                    replacements[exc.argument] = exc.suggestion
+                    instruction = (
+                        f"If {exc.suggestion!r} is the intended column, run:"
+                    )
+                elif isinstance(exc, ColumnMappingError):
+                    instruction = (
+                        f"Choose the correct value for {exc.option} from the "
+                        "available columns and retry."
+                    )
+                else:
+                    instruction = "Correct the import options and run:"
+                print(
+                    "The initialized project and its private document-ID key "
+                    f"were kept. {instruction}",
+                    file=sys.stderr,
+                )
+                if not isinstance(exc, ColumnMappingError) or exc.suggestion:
+                    print(
+                        f"  {_import_retry_command(args, replacements=replacements)}",
+                        file=sys.stderr,
+                    )
+                return 2
             print(
-                f"Created {args.directory.expanduser().resolve()} with "
+                f"{'Completed' if resumed else 'Created'} "
+                f"{_display_path(args.directory)} with "
                 f"{manifest['counts']['documents']} annotation-ready documents."
             )
-            print(f"Canonical dataset: {artifact}")
-            print(f"Manifest: {args.directory.expanduser().resolve() / 'manifests' / 'input-documents.json'}")
+            print(f"Canonical dataset: {_display_path(artifact)}")
+            print(
+                "Manifest: "
+                f"{_display_path(args.directory / 'manifests' / 'input-documents.json')}"
+            )
             import_mapping = (
                 args.directory.expanduser().resolve()
                 / "manifests"
                 / "import-mapping.json"
             )
-            print(
-                f"Reusable import mapping: {import_mapping}"
-            )
+            print(f"Reusable import mapping: {_display_path(import_mapping)}")
             _print_annotation_next_steps(
                 args.directory,
                 artifact,
@@ -389,19 +572,20 @@ def main(argv: list[str] | None = None) -> int:
                 namespace=args.namespace,
                 language_profile=args.language_profile,
             )
-            print(f"Created MedDeID project at {args.directory.expanduser().resolve()}")
+            print(f"Created MedDeID project at {_display_path(args.directory)}")
             return 0
         if args.project_command == "import":
             artifact, manifest = _run_import(args)
-            print(f"Imported {manifest['counts']['documents']} documents into {artifact}")
+            print(
+                f"Imported {manifest['counts']['documents']} documents into "
+                f"{_display_path(artifact)}"
+            )
             import_mapping = (
                 args.directory.expanduser().resolve()
                 / "manifests"
                 / "import-mapping.json"
             )
-            print(
-                f"Reusable import mapping: {import_mapping}"
-            )
+            print(f"Reusable import mapping: {_display_path(import_mapping)}")
             _print_annotation_next_steps(
                 args.directory,
                 artifact,
@@ -415,7 +599,10 @@ def main(argv: list[str] | None = None) -> int:
                 annotation_set_id=args.annotation_set_id,
                 annotator_id=args.annotator_id,
             )
-            print(f"Packaged {manifest['counts']['documents']} completed documents: {manifest_path}")
+            print(
+                f"Packaged {manifest['counts']['documents']} completed documents: "
+                f"{_display_path(manifest_path)}"
+            )
             print("Select this manifest and its JSONL together in meddeid-curate.")
             return 0
         if args.project_command == "prepare-training":
@@ -438,19 +625,22 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(
                 f"Prepared {manifest['development_documents']} development and "
-                f"{manifest['test_documents']} test documents in {output}"
+                f"{manifest['test_documents']} test documents in "
+                f"{_display_path(output)}"
             )
+            output_display = Path(_display_path(output))
             print(
                 "One-time fit: "
-                f"meddeid-train fit --data {output / 'fit'} ..."
+                f"meddeid-train fit --data {output_display / 'fit'} ..."
             )
             print(
                 "Epoch selection: "
-                f"meddeid-train select-epochs --data {output / 'selection'} ..."
+                f"meddeid-train select-epochs --data "
+                f"{output_display / 'selection'} ..."
             )
             print(
                 "Full refit: "
-                f"meddeid-train refit --data {output / 'refit'} ..."
+                f"meddeid-train refit --data {output_display / 'refit'} ..."
             )
             return 0
         manifest = split_project(

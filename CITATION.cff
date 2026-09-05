@@ -3,8 +3,8 @@ message: "If you use MedDeID data, cite this software and the MedDeID dataset or
 title: "MedDeID data"
 abstract: "Project import, deterministic data preparation, and synthetic generation for MedDeID."
 type: software
-version: "0.3.0"
-date-released: 2026-08-27
+version: "0.4.0"
+date-released: 2026-09-05
 authors:
   - family-names: Hellemans
     given-names: Stig
@@ -25,7 +25,7 @@ authors:
     given-names: Kris
     orcid: https://orcid.org/0000-0002-8217-2564
 repository-code: "https://github.com/stighellemans/meddeid-data"
-url: "https://stighellemans.github.io/meddeid.github.io/"
+url: "https://stighellemans.github.io/meddeid/"
 license: AGPL-3.0-only
 identifiers:
   - type: doi

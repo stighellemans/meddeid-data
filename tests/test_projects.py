@@ -26,6 +26,21 @@ def test_txt_project_import_uses_private_stable_mapping_and_empty_spans(tmp_path
     assert (project / "private" / "source-map.jsonl").is_file()
 
 
+def test_invalid_project_identity_does_not_leave_partial_directory(tmp_path):
+    project = tmp_path / "project"
+    with pytest.raises(ValueError, match="must be non-empty"):
+        init_project(project, namespace=" ", language_profile="nl-BE")
+    assert not project.exists()
+
+
+def test_project_init_ignores_macos_finder_metadata(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / ".DS_Store").write_bytes(b"finder metadata")
+    init_project(project, namespace="hospital-a", language_profile="nl-BE")
+    assert (project / "project.json").is_file()
+
+
 def test_csv_import_rejects_duplicate_content(tmp_path):
     project = tmp_path / "project"
     init_project(project, namespace="hospital-a", language_profile="nl-BE")

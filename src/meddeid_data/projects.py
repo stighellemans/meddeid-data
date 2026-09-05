@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import datetime as dt
 import decimal
+import difflib
 import json
 import os
 import re
@@ -48,6 +49,34 @@ class SourceRecord:
     source_id: str
     text: str
     metadata: dict[str, Any]
+
+
+class ColumnMappingError(ValueError):
+    """A CLI column option that does not match the source table header."""
+
+    def __init__(
+        self,
+        source: Path,
+        *,
+        option: str,
+        argument: str,
+        selected: str,
+        fieldnames: list[str],
+    ) -> None:
+        self.option = option
+        self.argument = argument
+        self.selected = selected
+        self.fieldnames = tuple(fieldnames)
+        matches = difflib.get_close_matches(selected, fieldnames, n=1, cutoff=0.6)
+        self.suggestion = matches[0] if matches else None
+        suggestion = (
+            f" Did you mean {self.suggestion!r}?" if self.suggestion else ""
+        )
+        available = ", ".join(repr(name) for name in fieldnames)
+        super().__init__(
+            f"{source}: {option} value {selected!r} does not match any source "
+            f"column.{suggestion} Available columns: {available}"
+        )
 
 
 def _write_json(path: Path, value: object) -> None:
@@ -157,8 +186,13 @@ def load_import_mapping(path: Path) -> dict[str, Any]:
 
 
 def init_project(root: Path, *, namespace: str, language_profile: str) -> dict:
+    namespace = namespace.strip()
+    language_profile = language_profile.strip()
+    if not namespace or not language_profile:
+        raise ValueError("namespace and language_profile must be non-empty")
+
     root = root.expanduser().resolve()
-    if root.exists() and any(root.iterdir()):
+    if root.exists() and any(path.name != ".DS_Store" for path in root.iterdir()):
         raise ValueError(f"project directory is not empty: {root}")
     for relative in ("artifacts", "manifests", "splits", "private"):
         (root / relative).mkdir(parents=True, exist_ok=True)
@@ -168,16 +202,14 @@ def init_project(root: Path, *, namespace: str, language_profile: str) -> dict:
     (root / ".gitignore").write_text("private/\n", encoding="utf-8")
     project = {
         "project_version": PROJECT_VERSION,
-        "namespace": namespace.strip(),
-        "language_profile": language_profile.strip(),
+        "namespace": namespace,
+        "language_profile": language_profile,
         "contracts": {"schema_version": SCHEMA_VERSION, "offset_unit": OFFSET_UNIT},
         "paths": {
             "canonical_documents": "artifacts/annotations.jsonl",
             "artifact_manifest": "manifests/input-documents.json",
         },
     }
-    if not project["namespace"] or not project["language_profile"]:
-        raise ValueError("namespace and language_profile must be non-empty")
     _write_json(root / "project.json", project)
     return project
 
@@ -192,6 +224,66 @@ def load_project(root: Path) -> tuple[Path, dict]:
     project = json.loads(manifest_path.read_text(encoding="utf-8"))
     if project.get("project_version") != PROJECT_VERSION:
         raise ValueError(f"unsupported project version: {project.get('project_version')!r}")
+    return root, project
+
+
+def resume_empty_project(
+    root: Path, *, namespace: str, language_profile: str
+) -> tuple[Path, dict]:
+    """Load an untouched project scaffold for a safe ``project create`` retry.
+
+    A failed first import intentionally leaves the private document-ID key in
+    place. Reusing that scaffold is safer than deleting it, but only while no
+    import, split, assignment, or other user-created project content exists.
+    """
+
+    root, project = load_project(root)
+    namespace = namespace.strip()
+    language_profile = language_profile.strip()
+    if (
+        project.get("namespace") != namespace
+        or project.get("language_profile") != language_profile
+    ):
+        raise ValueError(
+            f"project already exists at {root} with namespace "
+            f"{project.get('namespace')!r} and language profile "
+            f"{project.get('language_profile')!r}; project create will not "
+            "change an existing project's identity"
+        )
+
+    scaffold_directories = {
+        Path("artifacts"),
+        Path("manifests"),
+        Path("private"),
+        Path("splits"),
+    }
+    scaffold_files = {
+        Path(".gitignore"),
+        Path("project.json"),
+        Path("private/document-id.key"),
+    }
+    unexpected: list[str] = []
+    for path in root.rglob("*"):
+        if path.name == ".DS_Store":
+            continue
+        relative = path.relative_to(root)
+        if path.is_dir() and relative in scaffold_directories:
+            continue
+        if path.is_file() and relative in scaffold_files:
+            continue
+        unexpected.append(relative.as_posix())
+
+    key_path = root / "private" / "document-id.key"
+    if not key_path.is_file() or not key_path.read_text(encoding="utf-8").strip():
+        unexpected.append("private/document-id.key (missing or empty)")
+    if unexpected:
+        preview = ", ".join(sorted(unexpected)[:3])
+        if len(unexpected) > 3:
+            preview += f", and {len(unexpected) - 3} more"
+        raise ValueError(
+            f"project already contains data or custom content ({preview}); "
+            "project create will not overwrite it"
+        )
     return root, project
 
 
@@ -459,9 +551,21 @@ def _records_from_rows(
     caregiver_mappings: list[dict[str, str]] | None,
 ) -> list[SourceRecord]:
     if text_column not in fieldnames:
-        raise ValueError(f"{source}: missing text column {text_column!r}")
+        raise ColumnMappingError(
+            source,
+            option="--text-column",
+            argument="text_column",
+            selected=text_column,
+            fieldnames=fieldnames,
+        )
     if id_column and id_column not in fieldnames:
-        raise ValueError(f"{source}: missing ID column {id_column!r}")
+        raise ColumnMappingError(
+            source,
+            option="--id-column",
+            argument="id_column",
+            selected=id_column,
+            fieldnames=fieldnames,
+        )
 
     unknown_metadata = sorted(set(metadata_columns or []) - set(fieldnames))
     if unknown_metadata:
@@ -812,7 +916,7 @@ def import_documents(
         role="input_documents",
         artifact_path=artifact_path,
         records=rows,
-        producer={"name": "meddeid-data", "version": "0.3.0"},
+        producer={"name": "meddeid-data", "version": "0.4.0"},
         contracts={"language_profile": project["language_profile"]},
     )
     manifest["source"] = {

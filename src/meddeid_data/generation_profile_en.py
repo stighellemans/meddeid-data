@@ -1517,7 +1517,7 @@ def _resource_manifest() -> dict[str, Any]:
     return {
         "manifest_version": "meddeid.generation-resources.v1",
         "package": "meddeid-data",
-        "package_version": "0.3.0",
+        "package_version": "0.4.0",
         "profile_id": PROFILE_ID,
         "maturity": "audited-language-pack-profile",
         "resources": language_manifest["resources"]["resources"],

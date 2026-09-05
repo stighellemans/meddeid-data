@@ -3,6 +3,33 @@
 All notable user-visible changes are recorded here. This project follows
 semantic versioning while pre-1.0 versions may still refine public contracts.
 
+## [Unreleased]
+
+## [0.4.0] - 2026-09-05
+
+- Made `project create` safely retryable after a failed first import. It now
+  continues only a matching untouched scaffold, preserves the private
+  document-ID key, prints an actionable `project import` recovery command, and
+  continues to refuse projects that already contain data or custom content.
+- Validate project identity before creating directories, avoiding partial
+  scaffolds for empty namespace or language-profile values.
+- Show project artifacts and generated follow-up commands relative to the
+  current working directory when possible, while retaining absolute paths for
+  projects outside it.
+- Report invalid text/ID column selections as mapping errors, list available
+  source columns, suggest a close header match, and use that suggestion in the
+  printed recovery command instead of repeating the invalid option.
+- Rename the recommended model-initialized assignment from the opaque
+  `primary.jsonl` to `model-assisted-review.jsonl` and describe the next step
+  explicitly as reviewing and correcting that assignment.
+- Make the annotation handoff self-contained for new researchers: detect a
+  configured or suite-local `meddeid-annotate` checkout and its dependencies,
+  otherwise explain that the UI is not a pip package and print a public Docker
+  command whose image is downloaded automatically. Also print the compatible
+  inference install command when `meddeid` is not available. The printed
+  commands use the coordinated `meddeid` 0.3 and `meddeid-annotate` 0.2 release
+  lines.
+
 ## [0.3.0] - 2026-08-27
 
 - Added the generic `meddeid-data production` state machine with immutable

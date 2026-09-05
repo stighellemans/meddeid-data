@@ -18,7 +18,7 @@ identifiers, phone ranges, and clinical terminology are locale-specific.
 Belgian DEDUCE is not a runtime dependency.
 
 Start with the suite guide to
-[preparing and annotating data](https://stighellemans.github.io/meddeid.github.io/workflows/prepare-and-annotate/).
+[preparing and annotating data](https://stighellemans.github.io/meddeid/workflows/prepare-and-annotate/).
 This repository remains authoritative for import, project, split, generation,
 and validation commands.
 
@@ -184,9 +184,23 @@ and `en-US` profiles are the executable conformance examples.
 
 ## Create an annotation-ready dataset
 
+Researchers planning to use import, inference, evaluation, and training can
+install the complete compatible Python set once with
+`python -m pip install 'meddeid[research]'`. The smaller staged installation
+below is sufficient when only project creation is needed initially.
+
 No custom conversion script is required for a folder of plain UTF-8 text files
-or a CSV, TSV, or Parquet table. Create the project and import its first dataset
-in one command:
+or a CSV, TSV, or Parquet table. For TXT, CSV, or TSV, the only direct package
+required for this step is:
+
+```bash
+python -m pip install meddeid-data
+```
+
+Its schema and language dependencies are installed automatically. Use
+`python -m pip install 'meddeid-data[parquet]'` only when reading Parquet.
+Neither model weights nor the annotation web application are needed to create
+a project. Create the project and import its first dataset in one command:
 
 ```bash
 meddeid-data project create my-project notes.parquet \
@@ -195,7 +209,15 @@ meddeid-data project create my-project notes.parquet \
 ```
 
 The same command accepts `notes.csv`, `notes.tsv`, or a directory containing
-`.txt` files. Install `meddeid-data[parquet]` for Parquet support.
+`.txt` files.
+
+If a source or mapping option is rejected before import, `project create` keeps
+the initialized project and its private document-ID key, then prints an
+import-only recovery command. Correct the option and either run that
+`meddeid-data project import ...` command or repeat `project create` with the
+same namespace and language profile. A repeated create continues only an
+untouched, matching project scaffold. It never overwrites an imported dataset,
+split, assignment, or other project content.
 
 For tables, every column other than the text and ID columns is copied into the
 document's `metadata` by default. A column named `metadata` or `metadata_json`
@@ -312,17 +334,34 @@ profile. The command prints the exact next steps to generate local model
 pre-annotations as the initial state of an ordinary annotation assignment:
 
 ```bash
-meddeid batch my-project/artifacts/annotations.jsonl \
-  --output my-project/assignments/primary.jsonl \
-  --model stighellemans/meddeid-dutch-synth --device cpu
+python -m pip install 'meddeid>=0.3,<0.4'
 
-MEDDEID_ANNOTATIONS_PATH="$PWD/my-project/assignments/primary.jsonl" \
-npm --prefix /path/to/meddeid-annotate run dev
+meddeid batch my-project/artifacts/annotations.jsonl \
+  --output my-project/assignments/model-assisted-review.jsonl \
+  --model stighellemans/meddeid-dutch-synth --device cpu
 ```
 
-The model spans in `primary.jsonl` are not a separate suggestion type. They are
-the current spans in an assignment whose documents are still unreviewed. The
-reviewer edits, deletes, and adds spans using the normal annotation controls.
+`meddeid` supplies local inference; the model bundle is downloaded on its first
+use. `meddeid-annotate` is a separate web application rather than a pip
+package. The default no-checkout route is its public container image:
+
+```bash
+docker run --rm -p 127.0.0.1:8787:8787 \
+  --read-only --cap-drop ALL --security-opt no-new-privileges \
+  -e MEDDEID_ANNOTATIONS_PATH=/input/model-assisted-review.jsonl \
+  -v "$PWD/my-project/assignments/model-assisted-review.jsonl:/input/model-assisted-review.jsonl" \
+  ghcr.io/stighellemans/meddeid-annotate:0.2.0
+```
+
+Docker downloads the image automatically on first use. When a local source
+checkout is configured with `MEDDEID_ANNOTATE_DIR` or detected in the suite
+workspace, the CLI instead prints the matching `npm` commands and tells the
+user whether `npm ci` is still required.
+
+The predicted spans in `model-assisted-review.jsonl` are the editable starting
+state of a review assignment; they are not a separate suggestion type. Its
+documents remain unreviewed until a reviewer inspects the text, corrects the
+spans, and marks them reviewed using the normal annotation controls.
 
 For a profile without a released inference model, the CLI does not recommend
 the Dutch model. It instead prints the command for starting primary annotation
