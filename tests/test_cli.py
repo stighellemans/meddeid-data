@@ -181,7 +181,7 @@ def test_annotation_handoff_explains_non_pip_docker_route(
     assert "meddeid-annotate is a separate application, not a pip package" in output
     assert "install Docker Desktop or Docker Engine first" in output
     assert "downloaded automatically on first use" in output
-    assert "ghcr.io/stighellemans/meddeid-annotate:0.2.0" in output
+    assert "ghcr.io/stighellemans/meddeid-annotate:0.3.0" in output
 
 
 def test_project_create_accepts_common_name_column_mappings(tmp_path):

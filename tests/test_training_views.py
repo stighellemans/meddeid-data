@@ -95,6 +95,34 @@ def test_prepare_training_views_accepts_one_combined_development_file(tmp_path):
     assert set(fit_manifest["sources"]) >= {"development", "test_gold"}
 
 
+def test_prepare_training_views_uses_explicit_output_directory(tmp_path):
+    project = _project(tmp_path)
+    development = tmp_path / "reviewed-development.jsonl"
+    test = tmp_path / "test-gold.jsonl"
+    destination = tmp_path / "prepared-runs" / "experiment-02"
+    _write(
+        development,
+        [
+            *_read(project / "splits" / "validation.jsonl"),
+            *_read(project / "splits" / "train.jsonl"),
+        ],
+    )
+    _write(test, _read(project / "splits" / "test.jsonl"))
+
+    output, _ = prepare_training_views(
+        project,
+        development=development,
+        test_gold=test,
+        output=destination,
+    )
+
+    assert output == destination.resolve()
+    assert (destination / "selection" / "manifest.json").is_file()
+    assert (destination / "refit" / "manifest.json").is_file()
+    assert (destination / "fit" / "manifest.json").is_file()
+    assert not (project / "prepared").exists()
+
+
 def test_prepare_training_views_rejects_incomplete_or_wrong_assignments(tmp_path):
     project = _project(tmp_path)
     train = tmp_path / "reviewed-train.jsonl"

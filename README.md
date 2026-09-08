@@ -350,7 +350,7 @@ docker run --rm -p 127.0.0.1:8787:8787 \
   --read-only --cap-drop ALL --security-opt no-new-privileges \
   -e MEDDEID_ANNOTATIONS_PATH=/input/model-assisted-review.jsonl \
   -v "$PWD/my-project/assignments/model-assisted-review.jsonl:/input/model-assisted-review.jsonl" \
-  ghcr.io/stighellemans/meddeid-annotate:0.2.0
+  ghcr.io/stighellemans/meddeid-annotate:0.3.0
 ```
 
 Docker downloads the image automatically on first use. When a local source
@@ -395,7 +395,8 @@ the project's split manifest to recover the train and validation subsets:
 ```bash
 meddeid-data project prepare-training my-project \
   --development assignments/development-reviewer-a.jsonl \
-  --test-gold subannotation/evaluation-bundle/benchmark.jsonl
+  --test-gold subannotation/evaluation-bundle/benchmark.jsonl \
+  --output prepared-data/experiment-01
 ```
 
 For workflows that reviewed the two development subsets separately, the
@@ -405,13 +406,18 @@ This validates completion, canonical labels, exact split membership, and text
 identity before writing:
 
 ```text
-my-project/prepared/selection/{train,val,test}.jsonl
-my-project/prepared/refit/{train,val,test}.jsonl
-my-project/prepared/fit/{train,val,test}.jsonl
+prepared-data/experiment-01/selection/{train,val,test}.jsonl
+prepared-data/experiment-01/refit/{train,val,test}.jsonl
+prepared-data/experiment-01/fit/{train,val,test}.jsonl
 ```
 
-Use `prepared/fit` with `meddeid-train fit` for one-time training. The selection
-test file is intentionally empty. The refit train file recombines
+Omit `--output` to retain the compatible default, `my-project/prepared`. Give
+each distinct data/split snapshot its own output directory. Multiple model or
+hyperparameter runs over the same snapshot can reuse this prepared directory
+and should instead receive distinct `meddeid-train --run` directories.
+
+Use the generated `fit` view with `meddeid-train fit` for one-time training.
+The selection test file is intentionally empty. The refit train file recombines
 the complete reviewed development pool, while its test file contains only the
 sealed gold set. Each directory has a checksum and lineage manifest; existing
 non-empty output is never overwritten.

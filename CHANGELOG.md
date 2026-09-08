@@ -5,6 +5,11 @@ semantic versioning while pre-1.0 versions may still refine public contracts.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-08
+
+- Documented and tested explicit output directories for prepared training
+  views, making it clear how to keep multiple immutable data snapshots apart.
+
 ## [0.4.0] - 2026-09-05
 
 - Made `project create` safely retryable after a failed first import. It now

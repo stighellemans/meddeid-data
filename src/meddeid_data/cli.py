@@ -98,7 +98,7 @@ def _print_annotation_app_next_step(annotation_path: Path) -> None:
         print("Then open the local URL printed by the application.")
         return
 
-    image = "ghcr.io/stighellemans/meddeid-annotate:0.2.0"
+    image = "ghcr.io/stighellemans/meddeid-annotate:0.3.0"
     container_path = f"/input/{annotation_path.name}"
     if shutil.which("docker") is None:
         print(
@@ -376,7 +376,7 @@ def _write_dataset_manifest(
         role=role,
         artifact_path=path,
         records=rows,
-        producer={"name": "meddeid-data", "version": "0.4.0"},
+        producer={"name": "meddeid-data", "version": "0.4.1"},
         contracts={
             "language_profile": profile.profile_id,
             "generation_profile": "meddeid.generation-profile.v1",
@@ -479,7 +479,11 @@ def main(argv: list[str] | None = None) -> int:
         help="reviewed validation split used with --selection-train",
     )
     project_training.add_argument("--test-gold", type=Path, required=True)
-    project_training.add_argument("--output", type=Path)
+    project_training.add_argument(
+        "--output",
+        type=Path,
+        help=("destination for fit/selection/refit views (default: PROJECT/prepared)"),
+    )
     args = parser.parse_args(argv)
 
     if args.command == "production":
