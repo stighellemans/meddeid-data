@@ -2,6 +2,7 @@ MedDeID Data
 Copyright 2026 Stig Hellemans and contributors
 
 This package is part of the MedDeID suite and is distributed under the GNU
-Affero General Public License, version 3 only. Source-specific terms for lookup
-and clinical resources are documented with those resources and remain in
-effect.
+Affero General Public License, version 3 only, with the MedDeID Private
+Fine-Tuning Exception, version 1.0. That Exception expressly applies to this
+software. Source-specific terms for lookup and clinical resources are
+documented with those resources and remain in effect.

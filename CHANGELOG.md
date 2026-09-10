@@ -5,6 +5,12 @@ semantic versioning while pre-1.0 versions may still refine public contracts.
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-09-10
+
+- Include and expressly adopt the MedDeID Private Fine-Tuning Exception 1.0.
+- Pin the generated annotation handoff to the validated MedDeID Annotate 0.3.1
+  image digest and recommend the corrected MedDeID 0.4 package line.
+
 ## [0.4.1] - 2026-09-08
 
 - Documented and tested explicit output directories for prepared training

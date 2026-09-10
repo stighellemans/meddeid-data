@@ -177,11 +177,15 @@ def test_annotation_handoff_explains_non_pip_docker_route(
 
     output = capsys.readouterr().out
     assert "requires the MedDeID inference package" in output
-    assert "python -m pip install 'meddeid>=0.3,<0.4'" in output
+    assert "python -m pip install 'meddeid>=0.4.1,<0.5'" in output
     assert "meddeid-annotate is a separate application, not a pip package" in output
     assert "install Docker Desktop or Docker Engine first" in output
     assert "downloaded automatically on first use" in output
-    assert "ghcr.io/stighellemans/meddeid-annotate:0.3.0" in output
+    assert (
+        "ghcr.io/stighellemans/meddeid-annotate:0.3.1@"
+        "sha256:55c6ab5c578ebe1696eb5149c743b8e702470a8f9e1c3cd72e98a5f461bda271"
+        in output
+    )
 
 
 def test_project_create_accepts_common_name_column_mappings(tmp_path):

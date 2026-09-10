@@ -3,8 +3,8 @@ message: "If you use MedDeID data, cite this software and the MedDeID dataset or
 title: "MedDeID data"
 abstract: "Project import, deterministic data preparation, and synthetic generation for MedDeID."
 type: software
-version: "0.4.1"
-date-released: 2026-09-08
+version: "0.4.2"
+date-released: 2026-09-10
 authors:
   - family-names: Hellemans
     given-names: Stig

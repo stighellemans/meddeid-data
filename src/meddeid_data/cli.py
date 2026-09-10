@@ -98,7 +98,10 @@ def _print_annotation_app_next_step(annotation_path: Path) -> None:
         print("Then open the local URL printed by the application.")
         return
 
-    image = "ghcr.io/stighellemans/meddeid-annotate:0.3.0"
+    image = (
+        "ghcr.io/stighellemans/meddeid-annotate:0.3.1@"
+        "sha256:55c6ab5c578ebe1696eb5149c743b8e702470a8f9e1c3cd72e98a5f461bda271"
+    )
     container_path = f"/input/{annotation_path.name}"
     if shutil.which("docker") is None:
         print(
@@ -285,7 +288,7 @@ def _print_annotation_next_steps(
     if model:
         if shutil.which("meddeid") is None:
             print("\nModel-assisted review requires the MedDeID inference package:")
-            print("  python -m pip install 'meddeid>=0.3,<0.4'")
+            print("  python -m pip install 'meddeid>=0.4.1,<0.5'")
         print("\nNext: create a model-assisted review assignment:")
         print(
             f"  meddeid batch {artifact_arg} --output {assignment_arg} "

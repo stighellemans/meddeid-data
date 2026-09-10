@@ -334,7 +334,7 @@ profile. The command prints the exact next steps to generate local model
 pre-annotations as the initial state of an ordinary annotation assignment:
 
 ```bash
-python -m pip install 'meddeid>=0.3,<0.4'
+python -m pip install 'meddeid>=0.4.1,<0.5'
 
 meddeid batch my-project/artifacts/annotations.jsonl \
   --output my-project/assignments/model-assisted-review.jsonl \
@@ -350,7 +350,7 @@ docker run --rm -p 127.0.0.1:8787:8787 \
   --read-only --cap-drop ALL --security-opt no-new-privileges \
   -e MEDDEID_ANNOTATIONS_PATH=/input/model-assisted-review.jsonl \
   -v "$PWD/my-project/assignments/model-assisted-review.jsonl:/input/model-assisted-review.jsonl" \
-  ghcr.io/stighellemans/meddeid-annotate:0.3.0
+  ghcr.io/stighellemans/meddeid-annotate:0.3.1@sha256:55c6ab5c578ebe1696eb5149c743b8e702470a8f9e1c3cd72e98a5f461bda271
 ```
 
 Docker downloads the image automatically on first use. When a local source
@@ -431,5 +431,10 @@ pytest
 
 ## Licence
 
-Code is AGPL-3.0-only. Generated datasets and incorporated resources retain the
-terms stated with their respective artifacts and source notices.
+Code is AGPL-3.0-only with the MedDeID Private Fine-Tuning Exception, version
+1.0. The Exception permits private training data and resulting private
+fine-tuned weights to remain confidential; MedDeID code modifications remain
+subject to AGPL-3.0-only. See `NOTICE` and
+`MEDDEID-PRIVATE-FINE-TUNING-EXCEPTION-1.0.txt`. Generated datasets and
+incorporated resources retain the terms stated with their respective artifacts
+and source notices.
